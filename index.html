@@ -379,7 +379,7 @@ $("tbl").addEventListener("click",e=>{
   const c=e.target.closest("td.cell");if(!c)return;
   const i=c.dataset.i,w=+c.dataset.w,h=+c.dataset.h,k=+c.dataset.c;
   const b=cellData({iso:i,dow:w},h,k);
-  cur={i,w,h,k,id:b&&b.oid?b.oid:i+"_"+h+"_"+k,fid:w+"_"+h+"_"+k,fixed:!!(b&&b.fixed),has:!!b};
+  cur={i,w,h,k,id:b&&b.oid?b.oid:i+"_"+h+"_"+k,fid:w+"_"+h+"_"+k,fixed:!!(b&&b.fixed),has:!!b,sd:b&&b.sd||null,sn0:b?+b.sena||0:0};
   $("dt").textContent=(view==="eventos"?"Evento":"Cancha "+(k+1))+" · "+new Date((b&&b.oi||i)+"T00:00").toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long"})+" · "+pad(b&&b.oh!==undefined?b.oh:h)+":00";
   $("nm").value=b?b.name||"":"";$("ph").value=b?b.phone||"":"";
   $("pr").value=b?b.price||"":(view==="eventos"?"":h>=CFG.nf?CFG.pn:CFG.pd);
@@ -389,6 +389,7 @@ $("tbl").addEventListener("click",e=>{
 });
 $("ok").onclick=()=>{
   const d={name:$("nm").value.trim(),phone:$("ph").value.trim(),price:+$("pr").value||0,sena:+$("sn").value||0,paid:$("pd").checked};
+  {const sd=sdFor(cur.id.split("_")[0],d.sena,cur.sd,cur.sn0);if(sd)d.sd=sd}
   if(view==="eventos"){d.dur=Math.max(3,Math.min(24,+$("du").value||3));write("eventos",cur.id,d);$("dlg").close();return}
   write("turnos",cur.id,d);
   if($("fx").checked)write("fijos",cur.fid,{name:d.name,phone:d.phone,price:d.price,desde:(F[cur.fid]&&F[cur.fid].desde)||cur.i});
@@ -407,10 +408,14 @@ const PD=()=>iso(pd0());
 const num=v=>v===""||v==null?null:+v;
 function siOf(dt,k){const p=P[dt]||{};if(p.si&&p.si[k]!=null)return p.si[k];const q=new Date(dt+"T00:00");q.setDate(q.getDate()-1);const y=P[iso(q)];return y&&y.sf&&y.sf[k]!=null?y.sf[k]:""}
 function wP(patch){const dt=PD();P[dt]={...(P[dt]||{}),...patch};if(DB)DB.collection("planillas").doc(dt).set(P[dt]).catch(e=>alert("No se pudo guardar: "+(e&&e.message||e)));else saveLocal()}
-function dayTurnos(dt){const d={iso:dt,dow:(new Date(dt+"T00:00").getDay()+6)%7},rows=[],ev=[];let alq=0,sen=0,evt=0;
-  for(let h=0;h<24;h++){for(let c=0;c<2;c++){const b=cellData(d,h,c);if(b){rows.push({h,c,b});const p=+b.price||0,s=+b.sena||0;if(b.paid)alq+=p;else sen+=s}}
-    const e=cellData(d,h,9);if(e&&!e.k){ev.push({h,b:e});const p=+e.price||0,s=+e.sena||0;evt+=e.paid?p:s}}
-  return {rows,ev,alq,sen,evt}}
+function sdFor(td,s,psd,ps,cd){cd=cd||iso(new Date());if(!(s>0))return null;if(psd&&s===ps)return psd;return td>cd?cd:null}
+function dayTurnos(dt){const d={iso:dt,dow:(new Date(dt+"T00:00").getDay()+6)%7},rows=[],ev=[];let alq=0,sen=0,evt=0,sx=0;const sxl=[];
+  const eff=b=>{const p=+b.price||0,s=+b.sena||0,pre=!!(b.sd&&b.sd<dt);return b.paid?{a:pre?Math.max(p-s,0):p,s:0}:{a:0,s:pre?0:s}};
+  for(let h=0;h<24;h++){for(let c=0;c<2;c++){const b=cellData(d,h,c);if(b){rows.push({h,c,b});const x=eff(b);alq+=x.a;sen+=x.s}}
+    const e=cellData(d,h,9);if(e&&!e.k){ev.push({h,b:e});const x=eff(e);evt+=x.a+x.s}}
+  const add=(m,ex)=>Object.keys(m).forEach(id=>{const t=m[id];if(!t||t.skip||t.sd!==dt)return;const a=id.split("_");if(a[0]===dt)return;const s=+t.sena||0;if(s>0){sx+=s;sxl.push({d:a[0],h:+a[1],ev:ex,n:t.name,s})}});
+  add(T,false);add(E,true);
+  return {rows,ev,alq,sen,evt,sx,sxl}}
 function calc(){const dt=PD(),p=P[dt]||{},t=dayTurnos(dt),px=CFG.px||{};let beb=0,ali=0;const L={};
   CAT.forEach((s,si)=>s[1].forEach((it,i)=>{const k=si+"_"+i,a=num(siOf(dt,k)),f=num((p.sf||{})[k]),pr=px[k]!=null?px[k]:it[1];let v=0;if(a!=null&&f!=null)v=Math.max(a-f,0);L[k]={v,e:v*pr};if(si<2)beb+=v*pr;else ali+=v*pr}));
   const gs=(p.gs||[]).reduce((a,x)=>a+(+x.m||0),0),bruto=t.alq+t.sen+beb+ali+t.evt,neto=bruto-gs,mp=+p.mp||0;
@@ -449,10 +454,10 @@ function vOf(dt,k){const p=P[dt]||{};if(p.vt&&p.vt[k]!=null)return +p.vt[k]||0;i
 function siOf(dt,k,dep){dep=dep||0;const p=P[dt]||{};if(p.si&&p.si[k]!=null)return p.si[k];if(dep>31)return "";const q=new Date(dt+"T00:00");q.setDate(q.getDate()-1);const y=iso(q);if(!P[y])return "";const s=num(siOf(y,k,dep+1));return s==null?"":Math.max(s-vOf(y,k),0)}
 function calc(){const dt=PD(),p=P[dt]||{},t=dayTurnos(dt);let beb=0,ali=0;const L={},S=[];
   getCat().forEach((s,si)=>{let sub=0;s.items.forEach(it=>{const v=vOf(dt,it.id),a=num(siOf(dt,it.id)),e=v*(+it.p||0);L[it.id]={v,e,sf:a==null?"":Math.max(a-v,0)};sub+=e});S[si]=sub;if(s.t==="b")beb+=sub;else ali+=sub});
-  const gs=(p.gs||[]).reduce((a,x)=>a+(+x.m||0),0),bruto=t.alq+t.sen+beb+ali+t.evt,neto=bruto-gs;
+  const gs=(p.gs||[]).reduce((a,x)=>a+(+x.m||0),0),bruto=t.alq+t.sen+t.sx+beb+ali+t.evt,neto=bruto-gs;
   return {t,L,S,beb,ali,gs,bruto,neto,ef:neto-(+p.mp||0),pg:(p.pg||[]).reduce((a,x)=>a+(+x.m||0),0)}}
 function recalc(){const c=calc();Object.keys(c.L).forEach(k=>{const a=$("vt_"+k),b=$("e_"+k),s=$("sf_"+k);if(a){a.textContent=c.L[k].v;b.textContent=c.L[k].e?money(c.L[k].e):"";if(s&&document.activeElement!==s)s.value=c.L[k].sf}});
-  const s={tAlq:c.t.alq,tSen:c.t.sen,tBeb:c.beb,tAli:c.ali,tEve:c.t.evt,tBru:c.bruto,tGas:c.gs,tNet:c.neto,tEf:c.ef,tPg:c.pg,tMp:mpT(P[PD()]||{}),tTr:mpT(P[PD()]||{}),tBru2:c.bruto,tGas2:c.gs,tTot:cx(),tDif:cx()-c.neto,tUt:c.beb+c.ali-stT(),cAlq:c.t.alq+c.t.sen,cBeb:c.beb,cAli:c.ali,cEve:c.t.evt,cBru:c.bruto,hT:c.t.alq+c.t.sen,hE:c.t.evt};
+  const s={tAlq:c.t.alq+c.t.sen+c.t.sx,tSen:0,tBeb:c.beb,tAli:c.ali,tEve:c.t.evt,tBru:c.bruto,tGas:c.gs,tNet:c.neto,tEf:c.ef,tPg:c.pg,tMp:mpT(P[PD()]||{}),tTr:mpT(P[PD()]||{}),tBru2:c.bruto,tGas2:c.gs,tTot:cx(),tDif:cx()-c.neto,tUt:c.beb+c.ali-stT(),cAlq:c.t.alq+c.t.sen+c.t.sx,cBeb:c.beb,cAli:c.ali,cEve:c.t.evt,cBru:c.bruto,hT:c.t.alq+c.t.sen,hE:c.t.evt};
   c.S.forEach((v,i)=>s["hs"+i]=v);Object.keys(s).forEach(i=>{const e=$(i);if(e)e.textContent=money(s[i])})}
 function renderPlan(){const dt=PD(),p=P[dt]||{},t=dayTurnos(dt);
   $("range").textContent=pd0().toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
@@ -461,7 +466,7 @@ function renderPlan(){const dt=PD(),p=P[dt]||{},t=dayTurnos(dt);
   h+="<div class='pc'><h3><span>Turnos de canchas</span><b id='hT'></b></h3>";
   const hrs=[...new Set(t.rows.map(r=>r.h))].sort((a,b)=>a-b);
   h+=hrs.length?"<div class='wrap2'><table class='pt'><tr><th></th>"+hrs.map(x=>"<th>"+pad(x)+":00</th>").join("")+"</tr>"+[0,1].map(cn=>"<tr><th>Cancha "+(cn+1)+"</th>"+hrs.map(x=>{const r=t.rows.find(r=>r.h===x&&r.c===cn);return "<td>"+(r?esc(r.b.name||"Reservado")+"<i>"+money(r.b.price)+(r.b.paid?" ✓":+r.b.sena?" · seña "+money(r.b.sena):"")+"</i>":"")+"</td>"}).join("")+"</tr>").join("")+"</table></div>":"<div class='sub'>Sin turnos de cancha este día</div>";
-  h+="</div><div class='pc'><h3><span>Eventos</span><b id='hE'></b></h3>"+(t.ev.length?t.ev.map(e=>"<div class='li'><span>"+pad(e.h)+":00 · "+esc(e.b.name||"Evento")+" · "+(e.b.dur||3)+" h</span><span>"+money(e.b.price)+(e.b.paid?" ✓":"")+"</span></div>").join(""):"<div class='sub'>Sin eventos este día</div>")+"</div>";
+  h+="</div>"+(t.sxl.length?"<div class='pc'><h3><span>Señas cobradas hoy para otros días</span><b>"+money(t.sx)+"</b></h3>"+t.sxl.map(x=>"<div class='li'><span>"+esc(x.n||"Sin nombre")+" · "+(x.ev?"Evento ":"")+fd(x.d)+" "+pad(x.h)+":00</span><b>"+money(x.s)+"</b></div>").join("")+"<div class='sub'>Se suman a Alquileres del cierre de hoy. El día del turno solo se cobra lo que falte.</div></div>":"")+"<div class='pc'><h3><span>Eventos</span><b id='hE'></b></h3>"+(t.ev.length?t.ev.map(e=>"<div class='li'><span>"+pad(e.h)+":00 · "+esc(e.b.name||"Evento")+" · "+(e.b.dur||3)+" h</span><span>"+money(e.b.price)+(e.b.paid?" ✓":"")+"</span></div>").join(""):"<div class='sub'>Sin eventos este día</div>")+"</div>";
   h+="<div class='bar2'><button id='editp' class='"+(editP?"on":"")+"'>"+(editP?"Terminar edición":"Editar productos")+"</button></div>";
   getCat().forEach((s,si)=>{
     h+="<div class='pc'><h3><span>"+esc(s.n)+"</span><b id='hs"+si+"'></b></h3><div class='wrap2'><table class='pt2'><colgroup><col style='width:32%'><col style='width:14%'><col style='width:13%'><col style='width:20%'><col style='width:13%'><col style='width:18%'>"+(editP?"<col style='width:36px'>":"")+"</colgroup><tr><th>Producto</th><th>Precio</th><th>SI</th><th>Ventas</th><th>SF</th><th>Monto</th>"+(editP?"<th></th>":"")+"</tr>";
@@ -490,10 +495,10 @@ function cx(){const p=P[PD()]||{};return (+p.ef||0)+mpT(p)}
 function cierreHTML(o,live,p){p=p||{};const m=money,id=i=>live?" id='"+i+"'":"";
   const row=(l,v,i)=>"<div class='cr'><span>"+l+"</span><b"+id(i)+">"+(live?"":m(v))+"</b></div>";
   const g=(o.gl||[]).map(x=>"<div class='cr'><span>"+esc(x.c)+"</span><b>"+m(x.m)+"</b></div>").join("");
-  return "<div class='cg'><div><h4>Ingresos</h4>"+row("Alquileres",o.alq,"tAlq")+row("Señas",o.sen,"tSen")+row("Bebidas",o.beb,"tBeb")+row("Alimentos",o.ali,"tAli")+row("Eventos",o.eve,"tEve")+row("Total bruto",o.bruto,"tBru")+"</div><div><h4>Gastos</h4>"+g+row("Total gastos",o.gs,"tGas")+"</div><div><h4>Totales</h4>"+row("Total bruto",o.bruto,"tBru2")+row("Total gastos",o.gs,"tGas2")+row("Ingreso neto",o.neto,"tNet")+"<div class='cr'><span>Efectivo</span>"+(live?"<input type='number' id='efi' placeholder='En caja' value='"+(p.ef==null?"":p.ef)+"'>":"<b>"+m(o.ef)+"</b>")+"</div><div class='cr'><span>Transferencias</span>"+(live?"<b id='tMp'></b>":"<b>"+m(o.mp)+"</b>")+"</div>"+row("Total",o.tot,"tTot")+row("Diferencia",o.dif,"tDif")+"</div></div>"}
+  return "<div class='cg'><div><h4>Ingresos</h4>"+row("Alquileres",o.alq,"tAlq")+(+o.sen?row("Señas",o.sen,"tSen"):"")+row("Bebidas",o.beb,"tBeb")+row("Alimentos",o.ali,"tAli")+row("Eventos",o.eve,"tEve")+row("Total bruto",o.bruto,"tBru")+"</div><div><h4>Gastos</h4>"+g+row("Total gastos",o.gs,"tGas")+"</div><div><h4>Totales</h4>"+row("Total bruto",o.bruto,"tBru2")+row("Total gastos",o.gs,"tGas2")+row("Ingreso neto",o.neto,"tNet")+"<div class='cr'><span>Efectivo</span>"+(live?"<input type='number' id='efi' placeholder='En caja' value='"+(p.ef==null?"":p.ef)+"'>":"<b>"+m(o.ef)+"</b>")+"</div><div class='cr'><span>Transferencias</span>"+(live?"<b id='tMp'></b>":"<b>"+m(o.mp)+"</b>")+"</div>"+row("Total",o.tot,"tTot")+row("Diferencia",o.dif,"tDif")+"</div></div>"}
 function planTail(p){const c=calc(),st=p.st||[];
   return "<div class='pc'><h3><span>Transferencias</span><b id='tTr'></b></h3>"+(p.tr||[]).map((x,i)=>"<div class='li'><span>"+money(x.m)+(x.h?" · "+esc(x.h):"")+(x.n?" · "+esc(x.n):"")+"</span><button data-dtr='"+i+"'>✕</button></div>").join("")+"<div class='two'><input type='number' id='trm' placeholder='Monto transferido' inputmode='numeric'><input type='text' id='trn' placeholder='Detalle (opcional)'></div><button id='tra'>Agregar transferencia</button><div class='sub'>El total se suma en Transferencias. Si en el detalle escribís algo como: Matías lunes 21 horas, se agrega ese turno con la seña.</div>"+(trMsg?"<div class='sub' style='margin-top:6px'>"+esc(trMsg)+"</div>":"")+"</div>"+"<div class='pc'><h3><span>Ingreso de stock</span><b>"+money(stT())+"</b></h3>"+st.map((x,i)=>"<div class='li'><span>"+esc(x.e||"Sin nombre")+" · bebidas "+money(x.b)+" · alimentos "+money(x.a)+"</span><span><b>"+money((+x.b||0)+(+x.a||0))+"</b> <button data-dst='"+i+"'>✕</button></span></div>").join("")+"<div class='two3b'><input type='text' id='ste' placeholder='Establecimiento'><input type='number' id='stb' placeholder='Bebidas $'><input type='number' id='sta' placeholder='Alimentos $'></div><button id='sts'>Agregar ingreso</button><div class='sub'>Utilidad (ventas − costo del stock): <b id='tUt'></b></div></div>"
-  +"<div class='pc'><h3><span>Cierre de turno</span></h3>"+cierreHTML({alq:c.t.alq,sen:c.t.sen,beb:c.beb,ali:c.ali,eve:c.t.evt,bruto:c.bruto,gs:c.gs,gl:p.gs||[],neto:c.neto},true,p)+"<div class='two'><input type='text' id='bye' placeholder='Cerrado por (nombre)' value='"+esc(p.by||"")+"'><button class='p' id='cerrar'>Cerrar turno</button></div><div class='sub' id='cmsg'>"+(p.closed?"Turno cerrado el "+new Date(p.closed.at).toLocaleString("es")+(p.closed.by?" por "+esc(p.closed.by):"")+". Si lo cerrás de nuevo, se actualiza el historial.":"")+"</div></div>"}
+  +"<div class='pc'><h3><span>Cierre de turno</span></h3>"+cierreHTML({alq:c.t.alq+c.t.sen+c.t.sx,sen:0,beb:c.beb,ali:c.ali,eve:c.t.evt,bruto:c.bruto,gs:c.gs,gl:p.gs||[],neto:c.neto},true,p)+"<div class='two'><input type='text' id='bye' placeholder='Cerrado por (nombre)' value='"+esc(p.by||"")+"'><button class='p' id='cerrar'>Cerrar turno</button></div><div class='sub' id='cmsg'>"+(p.closed?"Turno cerrado el "+new Date(p.closed.at).toLocaleString("es")+(p.closed.by?" por "+esc(p.closed.by):"")+". Si lo cerrás de nuevo, se actualiza el historial.":"")+"</div></div>"}
 function renderHist(){$("range").textContent="Historial de cierres (se conservan 30 días)";const cut=iso(new Date(Date.now()-30*864e5)),ks=Object.keys(H).filter(k=>k>=cut).sort().reverse();
   $("plan").innerHTML=ks.length?ks.map(k=>{const r=H[k];return "<div class='pc hi' data-hk='"+k+"'><h3><span>"+new Date(k+"T00:00").toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long",year:"numeric"})+"</span><b>"+money(r.neto)+"</b></h3><div class='sub'>Bruto "+money(r.bruto)+" · Gastos "+money(r.gs)+" · Efectivo "+money(r.ef)+" · MP "+money(r.mp)+(r.dif?" · Diferencia "+money(r.dif):"")+"<br>Cerrado "+new Date(r.at).toLocaleString("es")+(r.by?" por "+esc(r.by):"")+"</div></div>"}).join(""):"<div class='pc'><div class='sub'>Todavía no hay turnos cerrados.</div></div>"}
 function showH(k){const r=H[k];if(!r)return;$("hdt").textContent=new Date(k+"T00:00").toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
@@ -508,7 +513,7 @@ $("plan").addEventListener("click",e=>{const hc=e.target.closest(".hi");if(hc){s
     if(p.ef==null){$("cmsg").textContent="Cargá el efectivo que hay en caja antes de cerrar el turno.";return}
     const by=$("bye").value.trim(),at=new Date().toISOString(),tot=(+p.ef||0)+mpT(p),sold=[];
     getCat().forEach(s=>s.items.forEach(it=>{const l=c.L[it.id];if(l.v)sold.push([it.n,l.v,l.e])}));
-    const rec={alq:c.t.alq,sen:c.t.sen,beb:c.beb,ali:c.ali,eve:c.t.evt,bruto:c.bruto,gs:c.gs,gl:p.gs||[],neto:c.neto,ef:+p.ef||0,mp:mpT(p),tot,dif:tot-c.neto,by,at,sold,st:stT(),ts:c.t.rows.map(r=>[r.c+1,r.h,r.b.name||"",r.b.price||0,r.b.paid?1:0]),ev:c.t.ev.map(v=>[v.h,v.b.name||"",v.b.dur||3,v.b.price||0])};
+    const rec={alq:c.t.alq+c.t.sen+c.t.sx,sen:0,beb:c.beb,ali:c.ali,eve:c.t.evt,bruto:c.bruto,gs:c.gs,gl:p.gs||[],neto:c.neto,ef:+p.ef||0,mp:mpT(p),tot,dif:tot-c.neto,by,at,sold,st:stT(),ts:c.t.rows.map(r=>[r.c+1,r.h,r.b.name||"",r.b.price||0,r.b.paid?1:0]),ev:c.t.ev.map(v=>[v.h,v.b.name||"",v.b.dur||3,v.b.price||0])};
     H[dt]=rec;wP({closed:{at,by},by});
     if(DB)DB.collection("cierres").doc(dt).set(rec).catch(er=>alert("No se pudo guardar el cierre: "+(er&&er.message||er)));
     renderPlan()}});
@@ -522,7 +527,7 @@ function qprice(){if($("qt").value!=="E")$("qpr").value=+$("qh").value>=CFG.nf?C
 function qsync(){const ev=$("qt").value==="E";$("qdw").style.display=ev?"":"none";if(ev)$("qpr").value="";else qprice()}
 $("qtop").onclick=()=>{qdate=view==="planilla"?PD():iso(new Date());$("qdt").textContent="Agregar turno / alquiler · "+new Date(qdate+"T00:00").toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long"});["qn","qp","qs"].forEach(i=>$(i).value="");$("qd").value=3;$("qpd").checked=false;$("qh").value=new Date().getHours();$("qm").textContent="";qsync();$("qdlg").showModal()};
 $("qt").onchange=qsync;$("qh").onchange=qprice;$("qcx").onclick=()=>$("qdlg").close();
-$("qok").onclick=()=>{const t=$("qt").value,h=+$("qh").value,d={name:$("qn").value.trim(),phone:$("qp").value.trim(),price:+$("qpr").value||0,sena:+$("qs").value||0,paid:$("qpd").checked};
+$("qok").onclick=()=>{const t=$("qt").value,h=+$("qh").value,d={name:$("qn").value.trim(),phone:$("qp").value.trim(),price:+$("qpr").value||0,sena:+$("qs").value||0,paid:$("qpd").checked};{const sd=sdFor(qdate,d.paid?d.price:d.sena,null,0,view==="planilla"?PD():null);if(sd)d.sd=sd}
   if(t==="E"){if(E[qdate+"_"+h+"_0"]){$("qm").textContent="Ya hay un evento que empieza a esa hora.";return}d.dur=Math.max(3,Math.min(24,+$("qd").value||3));write("eventos",qdate+"_"+h+"_0",d)}
   else{const dow=(new Date(qdate+"T00:00").getDay()+6)%7;const sv=view;view="canchas";const busy=cellData({iso:qdate,dow},h,+t);view=sv;if(busy){$("qm").textContent="Ese horario ya está ocupado en esa cancha.";return}write("turnos",qdate+"_"+h+"_"+t,d)}
   $("qdlg").close()};
@@ -576,11 +581,11 @@ function parseTxt(txt,defSena){
   r.name=nm||(r.type==="E"?"Evento":"");if(r.sena==null)r.sena=defSena!=null?defSena:0;return r}
 function busyC(i,h,c){const sv=view;view="canchas";const b=cellData({iso:i,dow:(new Date(i+"T00:00").getDay()+6)%7},h,c);view=sv;return !!b}
 const fd=i=>new Date(i+"T00:00").toLocaleDateString("es",{weekday:"short",day:"numeric",month:"short"});
-function addBooking(r){if(!r.date||r.hour==null)return {ok:false,msg:"falta "+(!r.date?"el día":"la hora")};
-  const pr=r.price!=null?r.price:(r.type==="E"?0:(r.hour>=CFG.nf?CFG.pn:CFG.pd)),sn=r.paid?pr:(r.sena||0),d={name:r.name,phone:"",price:pr,sena:sn,paid:r.paid};let w;
+function addBooking(r,cd){if(!r.date||r.hour==null)return {ok:false,msg:"falta "+(!r.date?"el día":"la hora")};
+  const pr=r.price!=null?r.price:(r.type==="E"?0:(r.hour>=CFG.nf?CFG.pn:CFG.pd)),sn=r.paid?pr:(r.sena||0),d={name:r.name,phone:"",price:pr,sena:sn,paid:r.paid};let w;{const sd=sdFor(r.date,sn,null,0,cd);if(sd)d.sd=sd}
   if(r.type==="E"){const id=r.date+"_"+r.hour+"_0";if(E[id])return {ok:false,msg:"ya hay un evento a las "+pad(r.hour)+":00"};d.dur=r.dur;write("eventos",id,d);w="Evento "+r.dur+" h"}
   else{let c=r.cancha;if(c==null)c=[0,1].find(x=>!busyC(r.date,r.hour,x));if(c==null||busyC(r.date,r.hour,c))return {ok:false,msg:"no hay cancha libre a las "+pad(r.hour)+":00"+(r.cancha!=null?" en la cancha "+(r.cancha+1):"")};write("turnos",r.date+"_"+r.hour+"_"+c,d);w="Cancha "+(c+1)}
-  return {ok:true,msg:"✓ "+(r.name||"Sin nombre")+" · "+w+" · "+fd(r.date)+" "+pad(r.hour)+":00 · seña "+money(sn)}}
+  return {ok:true,msg:"✓ "+(r.name||"Sin nombre")+" · "+w+" · "+fd(r.date)+" "+pad(r.hour)+":00 · seña "+money(sn)+(d.sd?" · cobrada hoy, suma a Alquileres del "+fd(d.sd)+" (el turno cobra solo lo que falte)":" · suma a Alquileres de ese día")}}
 function prev1(r){return !r.date||r.hour==null?"⚠ "+esc(r.name||"Sin nombre")+": falta "+(!r.date?"el día":"la hora"):"• "+esc(r.name||"Sin nombre")+" · "+(r.type==="E"?"Evento "+r.dur+" h":r.cancha!=null?"Cancha "+(r.cancha+1):"cancha libre")+" · "+fd(r.date)+" "+pad(r.hour)+":00 · seña "+money(r.paid?(r.price||0):r.sena)+(r.paid?" (pagado)":"")}
 const tlines=()=>$("tx").value.split(NL).filter(l=>l.trim());
 $("ttop").onclick=()=>{$("tx").value="";$("tpv").innerHTML="";$("tdlg").showModal()};
@@ -690,7 +695,7 @@ $("plan").addEventListener("click",e=>{if(view!=="empleados")return;const t=e.ta
 $("tabW").onclick=()=>{view="empleados";open.clear();render()};
 $("kcx").onclick=()=>$("kdlg").close();
 $("plan").addEventListener("click",e=>{const x=e.target.closest("button");if(!x)return;const p=P[PD()]||{};
-  if(x.id==="tra"){const m=+$("trm").value;if(!m)return;const n=new Date(),base=p.tr||(+p.mp?[{m:+p.mp,h:"",n:"Anterior"}]:[]);wP({tr:[...base,{m,h:pad(n.getHours())+":"+pad(n.getMinutes()),n:$("trn").value.trim()}]});const pt=parseTxt($("trn").value,m);if(pt.date||pt.hour!=null){const a=addBooking(pt);trMsg=a.ok?a.msg:"⚠ No se agregó el turno: "+a.msg}else trMsg="";renderPlan()}
+  if(x.id==="tra"){const dt0=PD(),m=+$("trm").value;if(!m)return;const n=new Date(),base=p.tr||(+p.mp?[{m:+p.mp,h:"",n:"Anterior"}]:[]);wP({tr:[...base,{m,h:pad(n.getHours())+":"+pad(n.getMinutes()),n:$("trn").value.trim()}]});const pt=parseTxt($("trn").value,m);if(pt.date||pt.hour!=null){const a=addBooking(pt,dt0);trMsg=a.ok?a.msg:"⚠ No se agregó el turno: "+a.msg}else trMsg=/se[ñn]a/i.test($("trn").value)?"⚠ Para que la seña se sume a Alquileres indicá el día y la hora en el detalle (por ejemplo: Matías seña hoy 21 horas, o Matías seña lunes 21 horas).":"";renderPlan()}
   else if(x.dataset.dtr!==undefined){wP({tr:(p.tr||[]).filter((_,i)=>i!=x.dataset.dtr)});renderPlan()}});
 $("vcl").onclick=()=>{const n=nk($("nm").value);if(!n)return;$("dlg").close();showClient(n)};
 $("tabK").onclick=()=>{view="clientes";open.clear();render()};
