@@ -253,6 +253,7 @@ body.pr #pa{display:block}
   <label>Nombre / equipo / evento</label><input type="text" id="nm">
   <label>Teléfono</label><input type="tel" id="ph">
   <div class="two"><div><label>Precio</label><input type="number" id="pr" inputmode="numeric"></div><div><label>Seña</label><input type="number" id="sn" inputmode="numeric"></div></div>
+  <div id="sdw"><label>Seña cobrada el (día en que entró la plata)</label><input type="date" id="sdt"></div>
   <div id="duw"><label>Duración en horas (mínimo 3)</label><input type="number" id="du" min="3" max="24" inputmode="numeric"></div>
   <label class="chk"><input type="checkbox" id="pd"> Pagado completo</label>
   <label class="chk"><input type="checkbox" id="fx"> Repetir todas las semanas (turno fijo)</label>
@@ -383,13 +384,13 @@ $("tbl").addEventListener("click",e=>{
   $("dt").textContent=(view==="eventos"?"Evento":"Cancha "+(k+1))+" · "+new Date((b&&b.oi||i)+"T00:00").toLocaleDateString("es",{weekday:"long",day:"numeric",month:"long"})+" · "+pad(b&&b.oh!==undefined?b.oh:h)+":00";
   $("nm").value=b?b.name||"":"";$("ph").value=b?b.phone||"":"";
   $("pr").value=b?b.price||"":(view==="eventos"?"":h>=CFG.nf?CFG.pn:CFG.pd);
-  $("sn").value=b?b.sena||"":"";$("pd").checked=!!(b&&b.paid);$("fx").checked=cur.fixed;
+  $("sn").value=b?b.sena||"":"";$("sdt").value=(b&&b.sd)||(b&&b.oi)||i;$("sdw").style.display=view==="eventos"?"none":"";$("pd").checked=!!(b&&b.paid);$("fx").checked=cur.fixed;
   $("del").style.display=b?"":"none";$("fx").parentNode.style.display=view==="eventos"?"none":"";$("duw").style.display=view==="eventos"?"":"none";$("du").value=b&&b.dur?b.dur:3;$("delf").style.display=cur.fixed?"":"none";
   $("dlg").showModal();
 });
 $("ok").onclick=()=>{
   const d={name:$("nm").value.trim(),phone:$("ph").value.trim(),price:+$("pr").value||0,sena:+$("sn").value||0,paid:$("pd").checked};
-  {const sd=sdFor(cur.id.split("_")[0],d.sena,cur.sd,cur.sn0);if(sd)d.sd=sd}
+  {const td=cur.id.split("_")[0],v=$("sdt").value;if(v){if((d.sena>0||d.paid)&&v<td)d.sd=v}else{const sd=sdFor(td,d.sena,cur.sd,cur.sn0);if(sd)d.sd=sd}}
   if(view==="eventos"){d.dur=Math.max(3,Math.min(24,+$("du").value||3));write("eventos",cur.id,d);$("dlg").close();return}
   write("turnos",cur.id,d);
   if($("fx").checked)write("fijos",cur.fid,{name:d.name,phone:d.phone,price:d.price,desde:(F[cur.fid]&&F[cur.fid].desde)||cur.i});
