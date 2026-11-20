@@ -281,6 +281,7 @@ body.pr #pa{display:block}
   <div class="row"><button id="edel">Eliminar</button><button id="ecx">Cancelar</button><button class="p" id="eok">Guardar</button></div></dialog>
 <dialog id="wdlg"><strong id="wdt">Turno de empleado</strong>
   <label>Empleado</label><select id="wE"></select>
+  <div id="wMw" style="display:none"><label>También trabajan en este mismo horario</label><div class="lg" id="wM" style="padding:4px 0"></div></div>
   <div class="two"><div><label>Fecha</label><input type="date" id="wD"></div><div><label>Tipo</label><select id="wT"><option value="N">Turno de trabajo</option><option value="X">Hora extra</option><option value="L">Día libre</option><option value="C">Libre compensado (usa horas extra)</option></select></div></div>
   <div class="two" id="wHr"><div><label>Entra</label><select id="wS"></select></div><div><label>Sale</label><select id="wF"></select></div></div>
   <div class="sub" id="wDur" style="margin-top:6px;font-weight:600"></div>
@@ -658,24 +659,26 @@ function renderEmp(){ESC={};const m=monday(),days=[...Array(7)].map((_,k)=>{cons
 function wdur(){const s=+$("wS").value,f=+$("wF").value,t=$("wT").value;$("wDur").textContent=(t==="N"||t==="X")?"Duración: "+(f>s?f-s:24-s+f)+" h"+(t==="X"?" de hora extra":""):""}
 function lastDur(id){const l=lastN(id);return l.s!=null?(l.f>l.s?l.f-l.s:24-l.s+l.f):8}
 function wsync(){const t=$("wT").value;$("wHr").style.display=t==="N"||t==="X"?"":"none";$("wCh").style.display=t==="C"?"":"none";wdur()}
+let lastWE=null;
+function wMbuild(){const cur=$("wE").value,ids=Object.keys(EM).filter(x=>x!==cur).sort((a,b)=>EM[a].n.localeCompare(EM[b].n)),prev=new Set([...document.querySelectorAll('.wmc:checked')].map(x=>x.value));$("wMw").style.display=(wcur&&!wcur.r&&ids.length)?"":"none";$("wM").innerHTML=ids.map(id=>"<label style='display:flex;gap:4px;align-items:center;margin:0 10px 0 0;font-size:13px;color:var(--ink)'><input type='checkbox' class='wmc' value='"+id+"'"+(prev.has(id)?" checked":"")+"> "+esc(EM[id].n)+"</label>").join("")}
 function openW(i,e,t,h){if(!Object.keys(EM).length){openE(null);return}
   const rec=e?SH[i+"_"+e+"_"+t]:null,ids=Object.keys(EM).sort((a,b)=>EM[a].n.localeCompare(EM[b].n));
   $("wE").innerHTML=ids.map(id=>"<option value='"+id+"'>"+esc(EM[id].n)+"</option>").join("");
-  const eid=e&&EM[e]?e:ids[0],em=lastN(eid),isX=t==="X",dd=lastDur(eid);wcur={r:rec?i+"_"+e+"_"+t:null};
+  const eid=e&&EM[e]?e:(lastWE&&EM[lastWE]?lastWE:ids[0]),em=lastN(eid),isX=t==="X",dd=lastDur(eid);wcur={r:rec?i+"_"+e+"_"+t:null};
   $("wE").value=eid;$("wD").value=i;$("wT").value=t||"N";$("wN").value=rec&&rec.n?rec.n:"";
   let s,f;if(rec&&rec.s!=null){s=+rec.s;f=+rec.f}else if(h!=null){s=h;f=(h+dd)%24}else{s=em.s!=null?em.s:18;f=isX?(s+dd)%24:(em.f!=null?em.f:(s+8)%24)}
-  $("wS").value=s;$("wF").value=f;$("wH").value=rec&&rec.hrs?rec.hrs:8;wsync();wbuild();$("wDays").style.display=rec?"none":"";
+  $("wS").value=s;$("wF").value=f;$("wH").value=rec&&rec.hrs?rec.hrs:8;wsync();wbuild();wMbuild();$("wDays").style.display=rec?"none":"";
   $("wdel").style.display=rec?"":"none";$("wdt").textContent=(rec?"Editar":"Agregar")+" turno de empleado";$("wdlg").showModal()}
 function lastN(id){let b=null;Object.values(SH).forEach(r=>{if(r.e===id&&r.t==="N"&&(!b||r.d>b.d))b=r});return b?{s:+b.s,f:+b.f}:{}}
 function wbuild(){const v=$("wD").value;if(!v){$("wDl").innerHTML="";return}const d=new Date(v+"T00:00"),m=new Date(d);m.setDate(d.getDate()-((d.getDay()+6)%7));
   $("wDl").innerHTML=[...Array(7)].map((_,k)=>{const x=new Date(m);x.setDate(m.getDate()+k);const ii=iso(x);return "<label style='display:flex;gap:4px;align-items:center;margin:0;font-size:12px;color:var(--ink)'><input type='checkbox' class='wdc' value='"+ii+"'"+(ii===v?" checked":"")+"> "+DAYS[k]+" "+x.getDate()+"</label>"}).join("")}
 $("wD").onchange=wbuild;
-$("wE").onchange=()=>{if(wcur&&!wcur.r){const l=lastN($("wE").value);if(l.s!=null&&$("wT").value==="N"){$("wS").value=l.s;$("wF").value=l.f}}};
+$("wE").onchange=()=>{lastWE=$("wE").value;wMbuild();if(wcur&&!wcur.r){const l=lastN($("wE").value);if(l.s!=null&&$("wT").value==="N"){$("wS").value=l.s;$("wF").value=l.f}}};
 $("wT").onchange=wsync;$("wS").onchange=wdur;$("wF").onchange=wdur;$("wcx").onclick=()=>$("wdlg").close();
 $("wok").onclick=()=>{const e=$("wE").value,i=$("wD").value,t=$("wT").value;if(!e||!i)return;
   const d={e,d:i,t,n:$("wN").value.trim(),en:eName(e)};if(t==="N"||t==="X"){d.s=+$("wS").value;d.f=+$("wF").value}if(t==="C")d.hrs=Math.max(1,+$("wH").value||8);
   if(wcur&&wcur.r){const id=i+"_"+e+"_"+t;if(wcur.r!==id)wGen("turnosemp",SH,wcur.r,null);wGen("turnosemp",SH,id,d)}
-  else{let ds=[...document.querySelectorAll(".wdc:checked")].map(x=>x.value);if(!ds.length)ds=[i];ds.forEach(dd=>wGen("turnosemp",SH,dd+"_"+e+"_"+t,{...d,d:dd}))}
+  else{let ds=[...document.querySelectorAll(".wdc:checked")].map(x=>x.value);if(!ds.length)ds=[i];const es=[e,...[...document.querySelectorAll(".wmc:checked")].map(x=>x.value)];lastWE=e;es.forEach(ee=>ds.forEach(dd=>wGen("turnosemp",SH,dd+"_"+ee+"_"+t,{...d,e:ee,en:eName(ee),d:dd})))}
   $("wdlg").close();render()};
 $("wdel").onclick=()=>{if(wcur&&wcur.r)wGen("turnosemp",SH,wcur.r,null);$("wdlg").close();render()};
 function openE(id){ecur=id;const e=id?EM[id]:null;$("edt").textContent=id?"Editar empleado":"Nuevo empleado";$("eN").value=e?e.n:"";$("eS").value=e&&e.s!=null?e.s:18;$("eF").value=e&&e.f!=null?e.f:2;$("eO").value=e&&e.off!=null?e.off:-1;$("eR").value=e?(e.from||""):iso(new Date());$("edel").style.display=id?"":"none";$("eM").textContent="";$("edlg").showModal()}
